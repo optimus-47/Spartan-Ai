@@ -1,0 +1,166 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String
+  createdAt    DateTime @default(now())
+
+  profile      UserProfile?
+  injuries     UserInjury[]
+  equipment    UserEquipment[]
+  bodyMetrics  BodyMetric[]
+  workoutPlans WorkoutPlan[]
+  sessions     WorkoutSession[]
+  mealLogs     MealLog[]
+}
+
+model UserProfile {
+  id                  String   @id @default(uuid())
+  userId              String   @unique
+  user                User     @relation(fields: [userId], references: [id])
+  age                 Int?
+  gender              String?
+  heightCm            Float?
+  weightKg            Float?
+  bodyFatPct          Float?
+  activityLevel       String?
+  goal                String?
+  gymExperience       String?
+  foodPreference      String?
+  sleepHoursTarget    Float?
+  waterIntakeTargetMl Int?
+  updatedAt           DateTime @updatedAt
+}
+
+model UserInjury {
+  id                String  @id @default(uuid())
+  userId            String
+  user              User    @relation(fields: [userId], references: [id])
+  injuryTag         String
+  affectedBodyPart  String?
+  active            Boolean @default(true)
+}
+
+model UserEquipment {
+  id            String @id @default(uuid())
+  userId        String
+  user          User   @relation(fields: [userId], references: [id])
+  equipmentTag  String
+}
+
+model BodyMetric {
+  id         String   @id @default(uuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id])
+  weightKg   Float
+  recordedAt DateTime @default(now())
+
+  @@index([userId, recordedAt])
+}
+
+model Exercise {
+  id                     String   @id @default(uuid())
+  name                   String
+  muscleGroup            String
+  equipmentRequired      String[]
+  instructions           String?
+  contraindicationTags   String[]
+
+  planExercises WorkoutPlanExercise[]
+  sessionSets   WorkoutSessionSet[]
+}
+
+model WorkoutPlan {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  goal        String?
+  generatedAt DateTime @default(now())
+  planJson    Json
+
+  exercises WorkoutPlanExercise[]
+  sessions  WorkoutSession[]
+}
+
+model WorkoutPlanExercise {
+  id           String      @id @default(uuid())
+  planId       String
+  plan         WorkoutPlan @relation(fields: [planId], references: [id])
+  exerciseId   String
+  exercise     Exercise    @relation(fields: [exerciseId], references: [id])
+  dayIndex     Int
+  orderIndex   Int
+  targetSets   Int
+  targetRepsMin Int?
+  targetRepsMax Int?
+  targetRpe    Float?
+}
+
+model WorkoutSession {
+  id          String    @id @default(uuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id])
+  planId      String?
+  plan        WorkoutPlan? @relation(fields: [planId], references: [id])
+  startedAt   DateTime  @default(now())
+  completedAt DateTime?
+
+  sets WorkoutSessionSet[]
+}
+
+model WorkoutSessionSet {
+  id         String         @id @default(uuid())
+  sessionId  String
+  session    WorkoutSession @relation(fields: [sessionId], references: [id])
+  exerciseId String
+  exercise   Exercise       @relation(fields: [exerciseId], references: [id])
+  setIndex   Int
+  weightKg   Float
+  reps       Int
+  isPr       Boolean        @default(false)
+}
+
+model Food {
+  id                String  @id @default(uuid())
+  name              String
+  cuisineTag        String?
+  caloriesPer100g   Float
+  proteinPer100g    Float
+  carbsPer100g      Float
+  fatPer100g        Float
+
+  mealItems MealLogItem[]
+}
+
+model MealLog {
+  id       String   @id @default(uuid())
+  userId   String
+  user     User     @relation(fields: [userId], references: [id])
+  logDate  DateTime @db.Date
+  mealSlot String
+
+  items MealLogItem[]
+}
+
+model MealLogItem {
+  id                String  @id @default(uuid())
+  mealLogId         String
+  mealLog           MealLog @relation(fields: [mealLogId], references: [id])
+  foodId            String?
+  food              Food?   @relation(fields: [foodId], references: [id])
+  foodNameSnapshot  String
+  quantityG         Float
+  caloriesSnapshot  Float
+  proteinSnapshot   Float
+  carbsSnapshot     Float
+  fatSnapshot       Float
+  isAiDetected      Boolean @default(false)
+  confidence        Float?
+}
