@@ -19,6 +19,7 @@ model User {
   workoutPlans WorkoutPlan[]
   sessions     WorkoutSession[]
   mealLogs     MealLog[]
+  aiMealPlans  AiMealPlan[]
 }
 
 model UserProfile {
@@ -163,4 +164,14 @@ model MealLogItem {
   fatSnapshot       Float
   isAiDetected      Boolean @default(false)
   confidence        Float?
+}
+
+model AiMealPlan {
+  id            String   @id @default(uuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id])
+  dietType      String?
+  goal          String?
+  generatedPlan Json
+  generatedAt   DateTime @default(now())
 }

@@ -86,8 +86,11 @@ async function getMealsForDate(userId, logDate) {
 async function detectFoodFromImage(imageBuffer, mimeType) {
   const foodCatalog = await prisma.food.findMany();
 
-  const prompt = `
-Identify each distinct food item visible in this image. For each item, estimate its name and portion size in grams.
+ const prompt = `
+Identify each distinct food item visible in this image. For each item, estimate its 
+name and portion size in grams, using visible plate/bowl/utensil size as a size 
+reference where present. Be conservative and specific with food names — prefer common, 
+recognizable dish names over overly specific guesses when uncertain.
 
 Respond with ONLY valid JSON (no markdown, no explanation) matching exactly this shape:
 {
@@ -95,7 +98,8 @@ Respond with ONLY valid JSON (no markdown, no explanation) matching exactly this
     { "name": "string", "estimatedGrams": 100, "confidence": 0.8 }
   ]
 }
-confidence is a number from 0 to 1 reflecting how sure you are about the identification.
+confidence should be lower (below 0.6) if the food, portion, or preparation is genuinely 
+ambiguous from the image — don't inflate confidence to seem certain.
 `;
 
   const imagePart = {

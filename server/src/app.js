@@ -6,6 +6,7 @@ const workoutRoutes = require("./routes/workoutRoutes");
 const nutritionRoutes = require("./routes/nutritionRoutes");
 const sessionRoutes = require("./routes/sessionRoutes");
 const analyticsRoutes = require("./routes/analyticsRoutes");
+const mealPlanRoutes = require("./routes/mealPlanRoutes");
 const errorHandler = require("./middleware/errorHandler");
 
 const app = express();
@@ -23,6 +24,7 @@ app.use("/api/workouts", workoutRoutes);
 app.use("/api/nutrition", nutritionRoutes);
 app.use("/api/workouts/sessions", sessionRoutes);
 app.use("/api/analytics", analyticsRoutes);
+app.use("/api/nutrition/meal-plans", mealPlanRoutes);
 app.use(errorHandler);
 
 module.exports = app;

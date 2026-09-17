@@ -64,7 +64,7 @@ async function confirmScan(req, res, next) {
   } catch (err) {
     if (err.name === "ZodError") {
       return res.status(400).json({
-        error: { code: "VALIDATION_ERROR", message: err.errors[0].message },
+        error: { code: "VALIDATION_ERROR", message: err.issues[0].message },
       });
     }
     next(err);
