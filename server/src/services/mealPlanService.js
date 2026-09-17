@@ -66,9 +66,6 @@ Include breakfast, lunch, dinner, and one snack per day, with reasonable portion
 supporting the user's goal.
 `;
 
-  const result = await textModel.generateContent(prompt);
-  const cleaned = result.response.text().replace(/```json|```/g, "").trim();
-
   let result;
   try {
     result = await retryWithBackoff(() => textModel.generateContent(prompt));
@@ -78,9 +75,20 @@ supporting the user's goal.
     err.code = "AI_UNAVAILABLE";
     throw err;
   }
+
+  const cleaned = result.response.text().replace(/```json|```/g, "").trim();
+
+  let parsed;
+  try {
+    parsed = JSON.parse(cleaned);
+  } catch (e) {
+    const err = new Error("AI returned malformed JSON");
+    err.statusCode = 502;
+    err.code = "AI_INVALID_RESPONSE";
+    throw err;
+  }
   return parsed;
 }
-
 function validateMealPlan(aiPlan, eligibleFoods) {
   const parsed = aiMealPlanResponseSchema.parse(aiPlan);
   const eligibleIds = new Set(eligibleFoods.map((f) => f.id));
