@@ -4,6 +4,7 @@ import { Hero } from "../components/landing/Hero";
 import { Intro, useIntro } from "../components/landing/Intro";
 import { Marquee } from "../components/landing/Marquee";
 import { SectionSkeleton } from "../components/landing/motion";
+import { h1 } from "framer-motion/m";
 
 const TileCollection = lazy(
   () => import("../components/landing/TileCollection"),
@@ -16,9 +17,11 @@ const FinalCta = lazy(() => import("../components/landing/FinalCta"));
 const Footer = lazy(() => import("../components/landing/Footer"));
 
 export default function Landing() {
+  console.log("BUILD CHECK 1");
   const { showIntro } = useIntro();
 
   return (
+
     <div className="landing">
       <Grain />
       <ScrollProgress />
