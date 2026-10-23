@@ -2,6 +2,7 @@ import { Navigate, Route, Routes } from "react-router-dom";
 import { AppShell } from "./components/AppShell";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import { useAuth } from "./context/AuthContext";
+import Landing from "./pages/Landing";
 import { HomePage } from "./pages/HomePage";
 import { LoginPage } from "./pages/LoginPage";
 import { ProtectedPlaceholderPage } from "./pages/ProtectedPlaceholderPage";
@@ -9,16 +10,17 @@ import { SignupPage } from "./pages/SignupPage";
 import { VerifyEmailPage } from "./pages/VerifyEmailPage";
 
 function RootRoute() {
-  const { user, profile } = useAuth();
+  const { user, profile, ready } = useAuth();
+  if (!ready) return <main className="auth-loading">Opening your field log…</main>;
   if (user) return <Navigate replace to={profile ? "/dashboard" : "/onboarding"} />;
-  return <HomePage />;
+  return <Landing />;
 }
 
 export default function App() {
   return (
     <Routes>
+      <Route element={<RootRoute />} path="/" />
       <Route element={<AppShell />}>
-        <Route element={<RootRoute />} path="/" />
         <Route element={<LoginPage />} path="/login" />
         <Route element={<SignupPage />} path="/signup" />
         <Route element={<VerifyEmailPage />} path="/verify-email" />
