@@ -2,6 +2,7 @@ const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
 const prisma = require("../config/prismaClient");
+const { ensureStarterCatalog } = require("../data/starterCatalog");
 
 const SALT_ROUNDS = 10;
 const CLEANUP_INTERVAL_MS = 60 * 60 * 1000;
@@ -377,6 +378,7 @@ async function seedGuestData(tx, userId, exercises, foods) {
 }
 
 async function guestLogin() {
+  await ensureStarterCatalog(prisma);
   const [exercises, foods] = await Promise.all([
     prisma.exercise.findMany({ orderBy: { name: "asc" } }),
     prisma.food.findMany({ orderBy: { name: "asc" } }),
