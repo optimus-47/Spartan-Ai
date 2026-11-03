@@ -13,6 +13,7 @@ interface AuthContextValue {
   user: AppUser | null;
   profile: UserProfile | null;
   ready: boolean;
+  status: AuthStatus;
   error: string | null;
   login: (email: string, password: string) => Promise<{
     profile: UserProfile | null;
@@ -21,64 +22,104 @@ interface AuthContextValue {
   refresh: () => Promise<void>;
 }
 
+export type AuthStatus =
+  | "restoring"
+  | "restore-error"
+  | "signed-out"
+  | "signed-in-profile-loading"
+  | "signed-in-with-profile"
+  | "signed-in-without-profile";
+
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: PropsWithChildren) {
   const [user, setUser] = useState<AppUser | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [ready, setReady] = useState(false);
+  const [status, setStatus] = useState<AuthStatus>("restoring");
   const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
-    if (!api.hasToken()) {
-      setUser(null);
-      setProfile(null);
-      return;
-    }
-
+    setReady(false);
+    setStatus("restoring");
     try {
-      const currentUser = await api.getCurrentUser();
-      setUser(currentUser.user);
-      setProfile(currentUser.profile);
-      setError(null);
+      if (!api.hasToken()) {
+        setUser(null);
+        setProfile(null);
+        setError(null);
+        setStatus("signed-out");
+      } else {
+        const currentUser = await api.getCurrentUser();
+        setUser(currentUser.user);
+        setProfile(currentUser.profile);
+        setError(null);
+        setStatus(
+          currentUser.profile
+            ? "signed-in-with-profile"
+            : "signed-in-without-profile",
+        );
+      }
     } catch (requestError) {
       if (isApiError(requestError) && requestError.status === 401) {
         api.clearToken();
         setUser(null);
         setProfile(null);
+        setError(null);
+        setStatus("signed-out");
       } else {
         setError(
           isApiError(requestError)
             ? requestError.message
             : "Unable to restore your session.",
         );
+        setStatus("restore-error");
       }
+    } finally {
+      setReady(true);
     }
   }, []);
 
   useEffect(() => {
-    let active = true;
-    void refresh().finally(() => {
-      if (active) setReady(true);
-    });
-    return () => {
-      active = false;
-    };
+    void refresh();
   }, [refresh]);
 
   const login = useCallback(async (email: string, password: string) => {
-    await api.login(email, password);
+    setReady(false);
+    setStatus("signed-in-profile-loading");
+    setError(null);
     try {
+      const signedIn = await api.login(email, password);
+      setUser(signedIn.user);
       const currentUser = await api.getCurrentUser();
       setUser(currentUser.user);
       setProfile(currentUser.profile);
       setError(null);
+      setStatus(
+        currentUser.profile
+          ? "signed-in-with-profile"
+          : "signed-in-without-profile",
+      );
       return currentUser;
     } catch (requestError) {
       if (isApiError(requestError) && requestError.status === 401) {
         api.clearToken();
+        setUser(null);
+        setProfile(null);
+        setError(null);
+        setStatus("signed-out");
+      } else if (api.hasToken()) {
+        setError(
+          isApiError(requestError)
+            ? requestError.message
+            : "Unable to restore your session.",
+        );
+        setStatus("restore-error");
+      } else {
+        setStatus("signed-out");
       }
       throw requestError;
+    } finally {
+      setReady(true);
     }
   }, []);
 
@@ -87,11 +128,13 @@ export function AuthProvider({ children }: PropsWithChildren) {
     setUser(null);
     setProfile(null);
     setError(null);
+    setStatus("signed-out");
+    setReady(true);
   }, []);
 
   const value = useMemo(
-    () => ({ user, profile, ready, error, login, logout, refresh }),
-    [user, profile, ready, error, login, logout, refresh],
+    () => ({ user, profile, ready, status, error, login, logout, refresh }),
+    [user, profile, ready, status, error, login, logout, refresh],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

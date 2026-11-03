@@ -1,6 +1,7 @@
 const prisma = require("../config/prismaClient");
 const { textModel } = require("../config/geminiClient");
 const { aiPlanResponseSchema } = require("../validators/workoutValidators");
+const retryWithBackoff = require("../utils/retryWithBackoff");
 
 // --- Step A: deterministic safety filter (no AI involved) ---
 async function getEligibleExercises(userId) {
@@ -71,7 +72,17 @@ Respond with ONLY valid JSON (no markdown, no explanation) matching exactly this
 Cover 7 days total (dayIndex 0-6), including rest days appropriate for the experience level.
 `;
 
-  const result = await textModel.generateContent(prompt);
+  let result;
+  try {
+    result = await retryWithBackoff(() => textModel.generateContent(prompt));
+  } catch (e) {
+    const err = new Error(
+      "AI service is currently overloaded. Please try again in a moment.",
+    );
+    err.statusCode = 503;
+    err.code = "AI_UNAVAILABLE";
+    throw err;
+  }
   const rawText = result.response.text();
 
   // Gemini sometimes wraps JSON in markdown fences despite instructions — strip them defensively
@@ -154,4 +165,13 @@ async function getActivePlan(userId) {
   return plan;
 }
 
-module.exports = { generateWorkoutPlan, getActivePlan, getEligibleExercises };
+async function getExercises() {
+  return prisma.exercise.findMany({ orderBy: { name: "asc" } });
+}
+
+module.exports = {
+  generateWorkoutPlan,
+  getActivePlan,
+  getEligibleExercises,
+  getExercises,
+};

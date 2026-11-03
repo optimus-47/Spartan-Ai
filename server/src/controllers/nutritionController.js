@@ -1,6 +1,12 @@
 const nutritionService = require("../services/nutritionService");
 const { logMealSchema, confirmMealScanSchema } = require("../validators/nutritionValidators");
 
+function validationMessage(err) {
+  return Array.isArray(err.issues) && err.issues[0]?.message
+    ? err.issues[0].message
+    : "Invalid request";
+}
+
 async function search(req, res, next) {
   try {
     const foods = await nutritionService.searchFoods(req.query.search);
@@ -16,9 +22,9 @@ async function logMeal(req, res, next) {
     const item = await nutritionService.logMealItem(req.userId, parsed);
     res.status(201).json(item);
   } catch (err) {
-    if (err.name === "ZodError") {
+    if (err?.name === "ZodError") {
       return res.status(400).json({
-        error: { code: "VALIDATION_ERROR", message: err.errors[0].message },
+        error: { code: "VALIDATION_ERROR", message: validationMessage(err) },
       });
     }
     next(err);
@@ -62,9 +68,9 @@ async function confirmScan(req, res, next) {
     const loggedItems = await nutritionService.confirmMealScan(req.userId, parsed);
     res.status(201).json({ loggedItems });
   } catch (err) {
-    if (err.name === "ZodError") {
+    if (err?.name === "ZodError") {
       return res.status(400).json({
-        error: { code: "VALIDATION_ERROR", message: err.issues[0].message },
+        error: { code: "VALIDATION_ERROR", message: validationMessage(err) },
       });
     }
     next(err);

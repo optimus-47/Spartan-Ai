@@ -3,20 +3,47 @@ import { AppShell } from "./components/AppShell";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import { useAuth } from "./context/AuthContext";
 import Landing from "./pages/Landing";
+import { DashboardPage } from "./pages/DashboardPage";
 import { HomePage } from "./pages/HomePage";
 import { LoginPage } from "./pages/LoginPage";
+import { OnboardingPage } from "./pages/OnboardingPage";
 import { ProtectedPlaceholderPage } from "./pages/ProtectedPlaceholderPage";
 import { SignupPage } from "./pages/SignupPage";
 import { VerifyEmailPage } from "./pages/VerifyEmailPage";
 
 function RootRoute() {
-  const { user, profile, ready } = useAuth();
-  if (!ready) return <main className="auth-loading">Opening your field log…</main>;
+  const { user, profile, ready, status } = useAuth();
+  if (!ready || status === "restoring" || status === "signed-in-profile-loading") {
+    return <main className="auth-loading">Opening your field log…</main>;
+  }
   if (user) return <Navigate replace to={profile ? "/dashboard" : "/onboarding"} />;
   return <Landing />;
 }
 
 export default function App() {
+  const { error, refresh, status } = useAuth();
+
+  if (status === "restore-error") {
+    return (
+      <main className="auth-retry" aria-live="polite">
+        <section className="auth-card">
+          <p className="eyebrow">CONNECTION INTERRUPTED</p>
+          <h1>We could not restore your field log.</h1>
+          <p className="auth-description">
+            {error || "Connection problem. Check your internet and retry."}
+          </p>
+          <button
+            className="button button-primary button-full"
+            onClick={() => void refresh()}
+            type="button"
+          >
+            Try again
+          </button>
+        </section>
+      </main>
+    );
+  }
+
   return (
     <Routes>
       <Route element={<RootRoute />} path="/" />
@@ -25,8 +52,8 @@ export default function App() {
         <Route element={<SignupPage />} path="/signup" />
         <Route element={<VerifyEmailPage />} path="/verify-email" />
         <Route element={<ProtectedRoute />}>
-          <Route element={<ProtectedPlaceholderPage />} path="/onboarding" />
-          <Route element={<ProtectedPlaceholderPage />} path="/dashboard" />
+          <Route element={<OnboardingPage />} path="/onboarding" />
+          <Route element={<DashboardPage />} path="/dashboard" />
           <Route element={<ProtectedPlaceholderPage />} path="/workouts" />
           <Route
             element={<ProtectedPlaceholderPage />}

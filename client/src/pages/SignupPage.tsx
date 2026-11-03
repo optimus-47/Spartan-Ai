@@ -1,14 +1,17 @@
 import { useState, type FormEvent } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
+import GuestButton from "../components/GuestButton";
+import { useAuth } from "../context/AuthContext";
 import { api, isApiError } from "../lib/api";
 
 export function SignupPage() {
+  const { login } = useAuth();
+  const navigate = useNavigate();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const [created, setCreated] = useState(false);
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -20,7 +23,8 @@ export function SignupPage() {
     setSubmitting(true);
     try {
       await api.signup(email.trim(), password);
-      setCreated(true);
+      await login(email.trim(), password);
+      navigate("/onboarding", { replace: true });
     } catch (requestError) {
       setError(
         isApiError(requestError)
@@ -31,22 +35,6 @@ export function SignupPage() {
       setSubmitting(false);
     }
   };
-
-  if (created) {
-    return (
-      <section className="auth-card" aria-live="polite">
-        <p className="eyebrow">CHECK YOUR INBOX</p>
-        <h1>One more step.</h1>
-        <p className="auth-description">
-          We sent a verification link to <strong>{email}</strong>. Open it to
-          begin your field log.
-        </p>
-        <Link className="button button-secondary button-full" to="/login">
-          Return to sign in
-        </Link>
-      </section>
-    );
-  }
 
   return (
     <section className="auth-card">
@@ -94,6 +82,7 @@ export function SignupPage() {
           {submitting ? "Creating your account…" : "Create account"}
         </button>
       </form>
+      <GuestButton />
       <p className="auth-switch">
         Already have an account? <Link to="/login">Log in</Link>
       </p>

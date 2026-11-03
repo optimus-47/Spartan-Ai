@@ -3,8 +3,10 @@ const API_URL = (import.meta.env.VITE_API_URL ?? "https://spartan-ai.onrender.co
 const API_BASE = `${API_URL}/api`;
 const TOKEN_KEY = "spartan-token";
 const NORMAL_TIMEOUT_MS = 25_000;
-const SLOW_REQUEST_MS = 5_000;
+const AI_TIMEOUT_MS = 90_000;
+const SLOW_REQUEST_MS = 6_000;
 const SLOW_REQUEST_EVENT = "spartan:slow-request";
+const GUEST_LIMIT_EVENT = "spartan:guest-limit";
 
 export interface ApiError {
   message: string;
@@ -43,6 +45,16 @@ export interface UserProfile {
 export interface AppUser {
   id: string;
   email: string;
+  isGuest?: boolean;
+}
+
+export interface Exercise {
+  id: string;
+  name: string;
+  muscleGroup: string;
+  equipmentRequired: string[];
+  instructions: string | null;
+  contraindicationTags: string[];
 }
 
 export interface CurrentUser {
@@ -50,10 +62,125 @@ export interface CurrentUser {
   profile: UserProfile | null;
 }
 
+export interface MealLogItem {
+  id: string;
+  foodId: string | null;
+  foodName: string;
+  quantityG: number;
+  calories: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+  isAiDetected: boolean;
+  confidence: number | null;
+}
+
+export interface MealLog {
+  id: string;
+  logDate: string;
+  mealSlot: string;
+  items: MealLogItem[];
+}
+
+export interface MealLogSummary {
+  mealLogs: MealLog[];
+  totals: {
+    calories: number;
+    protein: number;
+    carbs: number;
+    fat: number;
+  };
+}
+
+export interface PlannedExercise {
+  exerciseId: string;
+  dayIndex: number;
+  orderIndex: number;
+  targetSets: number;
+  targetRepsMin: number;
+  targetRepsMax: number;
+  targetRpe: number;
+  name: string;
+  muscleGroup: string;
+  instructions: string | null;
+}
+
+export interface ActiveWorkoutPlan {
+  id: string;
+  goal: string | null;
+  generatedAt: string;
+  planJson: {
+    splitType: string;
+    days: Array<{
+      dayIndex: number;
+      label: string;
+      isRestDay: boolean;
+    }>;
+    exercises: PlannedExercise[];
+  };
+}
+
+export interface WeightTrendPoint {
+  weightKg: number;
+  recordedAt: string;
+}
+
+export interface CaloriesTrendPoint {
+  date: string;
+  calories: number;
+}
+
+export interface WorkoutSessionSummary {
+  id: string;
+  startedAt: string;
+  completedAt: string | null;
+  sets: Array<{
+    id: string;
+    exerciseId: string;
+    setIndex: number;
+    weightKg: number;
+    reps: number;
+    isPr: boolean;
+    exercise: Pick<Exercise, "id" | "name" | "muscleGroup">;
+  }>;
+}
+
 interface RawCurrentUser {
   id: string;
   email: string;
+  isGuest?: boolean;
   profile: UserProfile | null;
+}
+
+interface RawMealLogItem {
+  id: string;
+  foodId: string | null;
+  foodNameSnapshot?: unknown;
+  quantityG?: unknown;
+  caloriesSnapshot?: unknown;
+  proteinSnapshot?: unknown;
+  carbsSnapshot?: unknown;
+  fatSnapshot?: unknown;
+  isAiDetected: boolean;
+  confidence: number | null;
+}
+
+interface RawMealLog {
+  id: string;
+  logDate: string;
+  mealSlot: string;
+  items: RawMealLogItem[];
+}
+
+interface RawWorkoutPlan {
+  id: string;
+  goal: string | null;
+  generatedAt: string;
+  planJson: {
+    splitType: string;
+    days: ActiveWorkoutPlan["planJson"]["days"];
+    exercises: Omit<PlannedExercise, "name" | "muscleGroup" | "instructions">[];
+  };
 }
 
 interface RawApiError {
@@ -67,6 +194,8 @@ interface RequestOptions extends Omit<RequestInit, "body"> {
   body?: BodyInit | object | null;
   timeoutMs?: number;
 }
+
+let exerciseCatalogRequest: Promise<Exercise[]> | null = null;
 
 function announceSlowRequest(requestId: string, active: boolean): void {
   window.dispatchEvent(
@@ -115,10 +244,16 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
   const {
     body,
     headers: inputHeaders,
-    timeoutMs = NORMAL_TIMEOUT_MS,
+    timeoutMs: requestedTimeoutMs,
     ...init
   } = options;
   const method = (init.method ?? "GET").toUpperCase();
+  const isAiRequest =
+    method === "POST" &&
+    (path === "/workouts/generate" ||
+      path === "/nutrition/meals/scan" ||
+      path === "/nutrition/meal-plans/generate");
+  const timeoutMs = requestedTimeoutMs ?? (isAiRequest ? AI_TIMEOUT_MS : NORMAL_TIMEOUT_MS);
   const headers = new Headers(inputHeaders);
   const token = localStorage.getItem(TOKEN_KEY);
   if (token) headers.set("Authorization", `Bearer ${token}`);
@@ -156,13 +291,20 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
       if (!response.ok) {
         const errorPayload =
           payload && typeof payload === "object" ? (payload as RawApiError) : {};
+        const code =
+          typeof errorPayload.error?.code === "string"
+            ? errorPayload.error.code
+            : "REQUEST_FAILED";
+        const message = getErrorMessage(response.status, errorPayload);
+        if (code === "GUEST_LIMIT") {
+          window.dispatchEvent(
+            new CustomEvent(GUEST_LIMIT_EVENT, { detail: { message } }),
+          );
+        }
         throw new ApiRequestError({
           status: response.status,
-          code:
-            typeof errorPayload.error?.code === "string"
-              ? errorPayload.error.code
-              : "REQUEST_FAILED",
-          message: getErrorMessage(response.status, errorPayload),
+          code,
+          message,
         });
       }
       return payload as T;
@@ -192,11 +334,10 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
 
 export const api = {
   async signup(email: string, password: string): Promise<AppUser> {
-    const response = await request<{ user: AppUser }>("/auth/signup", {
+    return request<AppUser>("/auth/signup", {
       method: "POST",
       body: { email, password },
     });
-    return response.user;
   },
 
   async login(email: string, password: string): Promise<{ token: string; user: AppUser }> {
@@ -208,6 +349,152 @@ export const api = {
     return response;
   },
 
+  async guestLogin(): Promise<{ token: string; user: AppUser }> {
+    const response = await request<{ token: string; user: AppUser }>("/auth/guest", {
+      method: "POST",
+      timeoutMs: 60_000,
+    });
+    localStorage.setItem(TOKEN_KEY, response.token);
+    return response;
+  },
+
+  async updateProfile(
+    profile: Partial<Omit<UserProfile, "id">>,
+  ): Promise<UserProfile> {
+    return request<UserProfile>("/users/me/profile", {
+      method: "PATCH",
+      body: profile,
+    });
+  },
+
+  async updateEquipment(equipmentTags: string[]): Promise<void> {
+    await request("/users/me/equipment", {
+      method: "PATCH",
+      body: { equipmentTags },
+    });
+  },
+
+  async addInjury(injuryTag: string): Promise<void> {
+    await request("/users/me/injuries", {
+      method: "POST",
+      body: { injuryTag },
+    });
+  },
+
+  async generateWorkoutPlan(
+    splitType: string = "upper_lower",
+  ): Promise<unknown> {
+    return request("/workouts/generate", {
+      method: "POST",
+      body: { splitType },
+    });
+  },
+
+  async getExercises(): Promise<Exercise[]> {
+    if (!exerciseCatalogRequest) {
+      exerciseCatalogRequest = request<Exercise[]>("/workouts/exercises");
+    }
+
+    const requestPromise = exerciseCatalogRequest;
+    try {
+      return await requestPromise;
+    } catch (error) {
+      if (exerciseCatalogRequest === requestPromise) {
+        exerciseCatalogRequest = null;
+      }
+      throw error;
+    }
+  },
+
+  async getMealsForDate(logDate: string): Promise<MealLogSummary> {
+    const response = await request<{ mealLogs: RawMealLog[] }>(
+      `/nutrition/meals?date=${encodeURIComponent(logDate)}`,
+    );
+    const totals = { calories: 0, protein: 0, carbs: 0, fat: 0 };
+    const mealLogs = response.mealLogs.map((log) => ({
+      ...log,
+      items: log.items.map((item) => {
+        const calories = Number(item.caloriesSnapshot) || 0;
+        const protein = Number(item.proteinSnapshot) || 0;
+        const carbs = Number(item.carbsSnapshot) || 0;
+        const fat = Number(item.fatSnapshot) || 0;
+        totals.calories += calories;
+        totals.protein += protein;
+        totals.carbs += carbs;
+        totals.fat += fat;
+
+        return {
+          id: item.id,
+          foodId: item.foodId,
+          foodName:
+            typeof item.foodNameSnapshot === "string"
+              ? item.foodNameSnapshot
+              : "Unknown food",
+          quantityG: Number(item.quantityG) || 0,
+          calories,
+          protein,
+          carbs,
+          fat,
+          isAiDetected: item.isAiDetected,
+          confidence: item.confidence,
+        };
+      }),
+    }));
+
+    return { mealLogs, totals };
+  },
+
+  async getWeightTrend(): Promise<WeightTrendPoint[]> {
+    return request<WeightTrendPoint[]>("/analytics/weight-trend");
+  },
+
+  async getCaloriesTrend(): Promise<CaloriesTrendPoint[]> {
+    return request<CaloriesTrendPoint[]>("/analytics/calories-trend");
+  },
+
+  async getWorkoutSessions(): Promise<WorkoutSessionSummary[]> {
+    return request<WorkoutSessionSummary[]>("/workouts/sessions");
+  },
+
+  async getActiveWorkoutPlan(): Promise<ActiveWorkoutPlan | null> {
+    let plan: RawWorkoutPlan;
+    try {
+      plan = await request<RawWorkoutPlan>("/workouts/plans/active");
+    } catch (error) {
+      if (
+        isApiError(error) &&
+        error.status === 404 &&
+        error.code === "NO_ACTIVE_PLAN"
+      ) {
+        return null;
+      }
+      throw error;
+    }
+
+    const exercises = await api.getExercises();
+    const exercisesById = new Map(exercises.map((exercise) => [exercise.id, exercise]));
+    return {
+      ...plan,
+      planJson: {
+        ...plan.planJson,
+        exercises: plan.planJson.exercises.map((plannedExercise) => {
+          const exercise = exercisesById.get(plannedExercise.exerciseId);
+          if (!exercise) {
+            throw new Error(
+              `Exercise catalog is missing ${plannedExercise.exerciseId} from the active plan.`,
+            );
+          }
+          return {
+            ...plannedExercise,
+            name: exercise.name,
+            muscleGroup: exercise.muscleGroup,
+            instructions: exercise.instructions,
+          };
+        }),
+      },
+    };
+  },
+
   async verifyEmail(token: string): Promise<void> {
     await request<{ success: true }>(
       `/auth/verify-email/${encodeURIComponent(token)}`,
@@ -217,7 +504,7 @@ export const api = {
   async getCurrentUser(): Promise<CurrentUser> {
     const raw = await request<RawCurrentUser>("/users/me");
     return {
-      user: { id: raw.id, email: raw.email },
+      user: { id: raw.id, email: raw.email, isGuest: raw.isGuest === true },
       profile: raw.profile,
     };
   },
@@ -243,3 +530,4 @@ export function isSlowRequestEvent(event: Event): event is CustomEvent<{
 }
 
 export const slowRequestEventName = SLOW_REQUEST_EVENT;
+export const guestLimitEventName = GUEST_LIMIT_EVENT;

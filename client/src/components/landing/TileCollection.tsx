@@ -26,21 +26,33 @@ interface CoverflowTileProps {
   index: number;
   onOpen: (id: FeatureId) => void;
   progress: MotionValue<number>;
+  spacing: number;
 }
 
-function CoverflowTile({ active, index, onOpen, progress }: CoverflowTileProps) {
+function CoverflowTile({
+  active,
+  index,
+  onOpen,
+  progress,
+  spacing,
+}: CoverflowTileProps) {
   const feature = FEATURES[index];
   const Demo = TILE_DEMOS[feature.id];
   const offset = useTransform(progress, (value) => value * (COUNT - 1) - index);
 
-  const x = useTransform(offset, [-2, -1, 0, 1, 2], [560, 300, 0, -300, -560]);
-  const rotateY = useTransform(offset, [-2, -1, 0, 1, 2], [52, 38, 0, -38, -52]);
-  const z = useTransform(offset, [-2, -1, 0, 1, 2], [-420, -220, 0, -220, -420]);
-  const scale = useTransform(offset, [-2, -1, 0, 1, 2], [0.8, 0.9, 1, 0.9, 0.8]);
-  const opacity = useTransform(
-    offset,
-    [-2, -1, 0, 1, 2],
-    [0.15, 0.55, 1, 0.55, 0.15],
+  const clampedOffset = useTransform(offset, (value) =>
+    Math.max(-2, Math.min(2, value)),
+  );
+  const x = useTransform(clampedOffset, (value) => -value * spacing);
+  const rotateY = useTransform(clampedOffset, (value) => -value * 17);
+  const z = useTransform(clampedOffset, (value) =>
+    -Math.min(1, Math.abs(value)) * 180,
+  );
+  const scale = useTransform(clampedOffset, (value) =>
+    1 - Math.min(2, Math.abs(value)) * 0.1,
+  );
+  const opacity = useTransform(clampedOffset, (value) =>
+    Math.max(0.8, 1 - Math.abs(value) * 0.1),
   );
   const zIndex = useTransform(offset, (value) => 10 - Math.round(Math.abs(value)));
   const pointerEvents = useTransform(offset, (value) =>
@@ -69,8 +81,11 @@ function PinnedCollection({
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
+  const sceneRef = useRef<HTMLDivElement>(null);
   const [activeIndex, setActiveIndex] = useState(0);
+  const [tileColumnWidth, setTileColumnWidth] = useState(0);
   const reduced = useReducedMotionSafe();
+  const spacing = tileColumnWidth * 0.28;
 
   const { scrollYProgress } = useScroll({
     target: containerRef,
@@ -89,6 +104,18 @@ function PinnedCollection({
     );
     setActiveIndex((current) => (current === next ? current : next));
   });
+
+  useEffect(() => {
+    const scene = sceneRef.current;
+    if (!scene) return;
+
+    const observer = new ResizeObserver(([entry]) => {
+      setTileColumnWidth(entry.target.getBoundingClientRect().width);
+    });
+    observer.observe(scene);
+    setTileColumnWidth(scene.getBoundingClientRect().width);
+    return () => observer.disconnect();
+  }, []);
 
   const scrollToIndex = useCallback(
     (index: number) => {
@@ -141,22 +168,26 @@ function PinnedCollection({
       style={{ height: `${COUNT * 100}svh` }}
     >
       <div className="coverflow-stage" ref={stageRef}>
-        <div className="coverflow-scene">
-          {FEATURES.map((item, index) => (
-            <CoverflowTile
-              active={activeIndex === index}
-              index={index}
-              key={item.id}
-              onOpen={onOpen}
-              progress={progress}
-            />
-          ))}
+        <div className="coverflow-scene" ref={sceneRef}>
+          {FEATURES.map((item, index) =>
+            Math.abs(index - activeIndex) <= 2 ? (
+              <CoverflowTile
+                active={activeIndex === index}
+                index={index}
+                key={item.id}
+                onOpen={onOpen}
+                progress={progress}
+                spacing={spacing}
+              />
+            ) : null,
+          )}
         </div>
 
         <div className="coverflow-caption">
           <AnimatePresence initial={false} mode="wait">
             <motion.div
               animate={{ opacity: 1, y: 0 }}
+              className="coverflow-caption-content"
               exit={{ opacity: 0, y: -12 }}
               initial={{ opacity: 0, y: 12 }}
               key={feature.id}

@@ -1,14 +1,20 @@
 const sessionService = require("../services/sessionService");
 const { startSessionSchema, logSetSchema } = require("../validators/sessionValidators");
 
+function validationMessage(err) {
+  return Array.isArray(err.issues) && err.issues[0]?.message
+    ? err.issues[0].message
+    : "Invalid request";
+}
+
 async function start(req, res, next) {
   try {
     const parsed = startSessionSchema.parse(req.body || {});
     const session = await sessionService.startSession(req.userId, parsed.planId);
     res.status(201).json(session);
   } catch (err) {
-    if (err.name === "ZodError") {
-      return res.status(400).json({ error: { code: "VALIDATION_ERROR", message: err.errors[0].message } });
+    if (err?.name === "ZodError") {
+      return res.status(400).json({ error: { code: "VALIDATION_ERROR", message: validationMessage(err) } });
     }
     next(err);
   }
@@ -20,8 +26,8 @@ async function addSet(req, res, next) {
     const set = await sessionService.logSet(req.userId, req.params.id, parsed);
     res.status(201).json(set);
   } catch (err) {
-    if (err.name === "ZodError") {
-      return res.status(400).json({ error: { code: "VALIDATION_ERROR", message: err.issues[0].message } });
+    if (err?.name === "ZodError") {
+      return res.status(400).json({ error: { code: "VALIDATION_ERROR", message: validationMessage(err) } });
     }
     next(err);
   }

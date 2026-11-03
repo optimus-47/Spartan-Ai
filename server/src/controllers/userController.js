@@ -6,10 +6,16 @@ const {
   addBodyMetricSchema,
 } = require("../validators/userValidators");
 
+function validationMessage(err) {
+  return Array.isArray(err.issues) && err.issues[0]?.message
+    ? err.issues[0].message
+    : "Invalid request";
+}
+
 function handleZodError(err, res) {
-  if (err.name === "ZodError") {
+  if (err?.name === "ZodError") {
     res.status(400).json({
-      error: { code: "VALIDATION_ERROR", message: err.issues[0].message },
+      error: { code: "VALIDATION_ERROR", message: validationMessage(err) },
     });
     return true;
   }

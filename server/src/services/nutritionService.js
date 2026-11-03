@@ -1,6 +1,7 @@
 const prisma = require("../config/prismaClient");
 const { visionModel } = require("../config/geminiClient");
 const { findBestFoodMatch } = require("../utils/fuzzyMatch");
+const retryWithBackoff = require("../utils/retryWithBackoff");
 
 async function searchFoods(searchTerm) {
   if (!searchTerm) {
@@ -109,7 +110,19 @@ ambiguous from the image — don't inflate confidence to seem certain.
     },
   };
 
-  const result = await visionModel.generateContent([prompt, imagePart]);
+  let result;
+  try {
+    result = await retryWithBackoff(() =>
+      visionModel.generateContent([prompt, imagePart]),
+    );
+  } catch (e) {
+    const err = new Error(
+      "AI service is currently overloaded. Please try again in a moment.",
+    );
+    err.statusCode = 503;
+    err.code = "AI_UNAVAILABLE";
+    throw err;
+  }
   const rawText = result.response.text();
   const cleaned = rawText.replace(/```json|```/g, "").trim();
 

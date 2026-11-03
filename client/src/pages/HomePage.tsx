@@ -2,9 +2,15 @@ import { Link, Navigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 
 export function HomePage() {
-  const { user, profile, ready } = useAuth();
+  const { user, profile, ready, status } = useAuth();
 
-  if (!ready) return <main className="auth-loading">Opening your field log…</main>;
+  if (
+    !ready ||
+    status === "restoring" ||
+    status === "signed-in-profile-loading"
+  ) {
+    return <main className="auth-loading">Opening your field log…</main>;
+  }
   if (user) return <Navigate replace to={profile ? "/dashboard" : "/onboarding"} />;
 
   return (

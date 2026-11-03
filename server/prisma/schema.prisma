@@ -11,6 +11,7 @@ model User {
   email        String   @unique
   passwordHash String
   createdAt    DateTime @default(now())
+  isGuest      Boolean  @default(false)
 
   profile      UserProfile?
   injuries     UserInjury[]

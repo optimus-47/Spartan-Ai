@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
+import GuestButton from "../components/GuestButton";
 import { useAuth } from "../context/AuthContext";
 import { isApiError } from "../lib/api";
 
@@ -8,7 +9,7 @@ interface LocationState {
 }
 
 export function LoginPage() {
-  const { user, profile, ready, login } = useAuth();
+  const { user, profile, ready, status, login } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
   const [email, setEmail] = useState("");
@@ -16,8 +17,20 @@ export function LoginPage() {
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
-  if (ready && user) {
+  if (
+    ready &&
+    user &&
+    (status === "signed-in-with-profile" ||
+      status === "signed-in-without-profile")
+  ) {
     return <Navigate replace to={profile ? "/dashboard" : "/onboarding"} />;
+  }
+  if (
+    !ready ||
+    status === "restoring" ||
+    status === "signed-in-profile-loading"
+  ) {
+    return <main className="auth-loading">Restoring your field log…</main>;
   }
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -32,15 +45,11 @@ export function LoginPage() {
         : "/onboarding";
       navigate(destination, { replace: true });
     } catch (requestError) {
-      if (isApiError(requestError) && requestError.code === "EMAIL_NOT_VERIFIED") {
-        setError("Verify your email from the link in your inbox, then return here.");
-      } else {
-        setError(
-          isApiError(requestError)
-            ? requestError.message
-            : "We could not sign you in. Please try again.",
-        );
-      }
+      setError(
+        isApiError(requestError)
+          ? requestError.message
+          : "We could not sign you in. Please try again.",
+      );
     } finally {
       setSubmitting(false);
     }
@@ -81,6 +90,7 @@ export function LoginPage() {
           {submitting ? "Signing in…" : "Sign in"}
         </button>
       </form>
+      <GuestButton />
       <p className="auth-switch">
         New to Spartan AI? <Link to="/signup">Create an account</Link>
       </p>

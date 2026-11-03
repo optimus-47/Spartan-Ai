@@ -15,15 +15,20 @@ async function getCaloriesTrend(userId) {
     orderBy: { logDate: "asc" },
   });
 
-  // group by date, sum calories per day
   const dailyTotals = {};
   for (const log of mealLogs) {
     const dateKey = log.logDate.toISOString().split("T")[0];
-    const dayCalories = log.items.reduce((sum, item) => sum + item.caloriesSnapshot, 0);
+    const dayCalories = log.items.reduce(
+      (sum, item) => sum + item.caloriesSnapshot,
+      0,
+    );
     dailyTotals[dateKey] = (dailyTotals[dateKey] || 0) + dayCalories;
   }
 
-  return Object.entries(dailyTotals).map(([date, calories]) => ({ date, calories }));
+  return Object.entries(dailyTotals).map(([date, calories]) => ({
+    date,
+    calories,
+  }));
 }
 
 module.exports = { getWeightTrend, getCaloriesTrend };

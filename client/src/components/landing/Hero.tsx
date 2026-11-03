@@ -1,6 +1,7 @@
 import { motion, useScroll, useTransform } from "framer-motion";
 import { useRef } from "react";
 import { Link } from "react-router-dom";
+import GuestButton from "../GuestButton";
 import { HeroTableau } from "./HeroTableau";
 import { EASE_OUT, Magnetic, WordReveal, useReducedMotionSafe } from "./motion";
 
@@ -75,6 +76,7 @@ export function Hero({ start }: { start: boolean }) {
             <Link className="button button-secondary" to="/login">
               Log in
             </Link>
+            <GuestButton />
           </motion.div>
         </div>
 

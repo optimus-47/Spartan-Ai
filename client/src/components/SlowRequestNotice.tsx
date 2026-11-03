@@ -28,7 +28,7 @@ export function SlowRequestNotice() {
   if (activeRequests.size === 0) return null;
   return (
     <div aria-live="polite" className="server-notice" role="status">
-      Waking the server, this can take up to a minute
+      Waking the server. This can take up to a minute.
     </div>
   );
 }

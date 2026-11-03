@@ -14,6 +14,7 @@ function requireAuth(req, res, next) {
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     req.userId = decoded.userId;
+    req.isGuest = decoded.isGuest === true;
     next();
   } catch (err) {
     return res.status(401).json({

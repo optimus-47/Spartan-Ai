@@ -122,13 +122,37 @@ async function generateMealPlan(userId, dietType, days) {
 
   const aiPlanRaw = await callGeminiForMealPlan(profile, eligibleFoods, days);
   const validatedPlan = validateMealPlan(aiPlanRaw, eligibleFoods);
+  const foodsById = new Map(eligibleFoods.map((food) => [food.id, food]));
+  const planWithMealDetails = {
+    ...validatedPlan,
+    days: validatedPlan.days.map((day) => ({
+      ...day,
+      meals: day.meals.map((meal) => {
+        const food = foodsById.get(meal.foodId);
+        if (!food) {
+          const err = new Error(`Food not found for meal plan item: ${meal.foodId}`);
+          err.statusCode = 502;
+          err.code = "AI_CONSTRAINT_VIOLATION";
+          throw err;
+        }
+
+        const quantityFactor = meal.quantityG / 100;
+        return {
+          ...meal,
+          foodName: food.name,
+          calories: food.caloriesPer100g * quantityFactor,
+          protein: food.proteinPer100g * quantityFactor,
+        };
+      }),
+    })),
+  };
 
   const saved = await prisma.aiMealPlan.create({
     data: {
       userId,
       dietType: effectiveDietType,
       goal: profile?.goal || null,
-      generatedPlan: validatedPlan,
+      generatedPlan: planWithMealDetails,
     },
   });
 

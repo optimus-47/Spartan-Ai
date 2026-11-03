@@ -5,10 +5,16 @@ async function retryWithBackoff(fn, maxRetries = 3, baseDelayMs = 1500) {
       return await fn();
     } catch (err) {
       lastError = err;
-      const isRetryable = err.status === 503 || err.message?.includes("503") || err.message?.includes("overloaded");
+      const status = err?.statusCode ?? err?.status ?? err?.response?.status;
+      const message =
+        typeof err?.message === "string" ? err.message.toLowerCase() : "";
+      const isRetryable =
+        status === 503 || /\b503\b/.test(message) || message.includes("overloaded");
       if (!isRetryable || attempt === maxRetries) throw err;
       const delay = baseDelayMs * Math.pow(2, attempt);
-      console.log(`Gemini overloaded, retrying in ${delay}ms (attempt ${attempt + 1}/${maxRetries})`);
+      console.warn(
+        `Gemini unavailable, retrying in ${delay}ms (attempt ${attempt + 1}/${maxRetries})`,
+      );
       await new Promise((resolve) => setTimeout(resolve, delay));
     }
   }
