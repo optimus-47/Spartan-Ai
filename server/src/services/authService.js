@@ -164,7 +164,7 @@ async function cleanupExpiredGuests() {
       await tx.user.deleteMany({
         where: { id: { in: userIds } },
       });
-    });
+    }, { maxWait: 10_000, timeout: 30_000 });
   })();
 
   try {
@@ -252,40 +252,18 @@ function selectSessionExercises(exercises, exercisesByName) {
   return selected.slice(0, Math.min(4, exercises.length));
 }
 
-async function seedGuestData(tx, userId, exercises, foods) {
+// Builds every demo row in memory (with pre-generated IDs) so the transaction only runs a few batched inserts.
+function buildGuestData(userId, exercises, foods) {
   const exercisesByName = new Map(exercises.map((exercise) => [exercise.name, exercise]));
   const foodsByName = new Map(foods.map((food) => [food.name, food]));
 
-  await tx.user.update({
-    where: { id: userId },
-    data: {
-      profile: {
-        create: {
-          displayName: "Demo",
-          age: 29,
-          gender: "male",
-          heightCm: 175,
-          weightKg: 77.6,
-          goal: "general_fitness",
-          gymExperience: "intermediate",
-          activityLevel: "moderate",
-          foodPreference: "non_vegetarian",
-        },
-      },
-      equipment: {
-        create: GUEST_EQUIPMENT.map((equipmentTag) => ({ equipmentTag })),
-      },
-    },
-  });
-
-  const planJson = buildWorkoutPlan(exercisesByName);
-  const plan = await tx.workoutPlan.create({
-    data: {
-      userId,
-      goal: "general_fitness",
-      planJson,
-    },
-  });
+  const planId = crypto.randomUUID();
+  const plan = {
+    id: planId,
+    userId,
+    goal: "general_fitness",
+    planJson: buildWorkoutPlan(exercisesByName),
+  };
 
   const sessionExercises = selectSessionExercises(exercises, exercisesByName);
   if (sessionExercises.length < 3) {
@@ -296,57 +274,44 @@ async function seedGuestData(tx, userId, exercises, foods) {
     );
   }
 
+  const sessions = [];
+  const sets = [];
   const bestEstimatedMax = new Map();
   for (let sessionIndex = 0; sessionIndex < 6; sessionIndex += 1) {
     const daysAgo = 18 - sessionIndex * 3;
     const completedAt = new Date(Date.now() - daysAgo * DAY_MS);
     const startedAt = new Date(completedAt.getTime() - 60 * 60 * 1000);
-    const session = await tx.workoutSession.create({
-      data: { userId, planId: plan.id, startedAt, completedAt },
-    });
+    const sessionId = crypto.randomUUID();
+    sessions.push({ id: sessionId, userId, planId, startedAt, completedAt });
 
-    const sets = [];
     sessionExercises.forEach((exercise, exerciseIndex) => {
-      const baseWeight = 25 + exerciseIndex * 10;
-      const weightKg = baseWeight + sessionIndex * 1.25;
+      const weightKg = 25 + exerciseIndex * 10 + sessionIndex * 1.25;
       [10, 8, 8].forEach((reps, setIndex) => {
         const estimatedMax = weightKg * (1 + reps / 30);
         const previousBest = bestEstimatedMax.get(exercise.id) || 0;
-        sets.push({
-          sessionId: session.id,
-          exerciseId: exercise.id,
-          setIndex,
-          weightKg,
-          reps,
-          isPr: estimatedMax > previousBest,
-        });
-        if (estimatedMax > previousBest) {
-          bestEstimatedMax.set(exercise.id, estimatedMax);
-        }
+        const isPr = estimatedMax > previousBest;
+        sets.push({ sessionId, exerciseId: exercise.id, setIndex, weightKg, reps, isPr });
+        if (isPr) bestEstimatedMax.set(exercise.id, estimatedMax);
       });
     });
-    await tx.workoutSessionSet.createMany({ data: sets });
   }
 
+  const bodyMetrics = [];
   for (let index = 0; index < 8; index += 1) {
     const weeksAgo = 7 - index;
-    const weightKg = 80.4 - index * 0.4;
-    await tx.bodyMetric.create({
-      data: {
-        userId,
-        weightKg,
-        recordedAt: new Date(Date.now() - (weeksAgo * 7 + 1) * DAY_MS),
-      },
+    bodyMetrics.push({
+      userId,
+      weightKg: 80.4 - index * 0.4,
+      recordedAt: new Date(Date.now() - (weeksAgo * 7 + 1) * DAY_MS),
     });
   }
 
+  const mealLogs = [];
+  const mealLogItems = [];
   const mealSlots = ["breakfast", "lunch", "dinner", "snack"];
   const quantitiesG = { breakfast: 150, lunch: 220, dinner: 200, snack: 100 };
   for (let daysAgo = 6; daysAgo >= 0; daysAgo -= 1) {
     for (const mealSlot of mealSlots) {
-      const mealLog = await tx.mealLog.create({
-        data: { userId, logDate: utcDateDaysAgo(daysAgo), mealSlot },
-      });
       const foodNames = mealRotations[mealSlot];
       const food =
         foodsByName.get(foodNames[(6 - daysAgo) % foodNames.length]) ??
@@ -359,22 +324,25 @@ async function seedGuestData(tx, userId, exercises, foods) {
         );
       }
 
+      const mealLogId = crypto.randomUUID();
+      mealLogs.push({ id: mealLogId, userId, logDate: utcDateDaysAgo(daysAgo), mealSlot });
+
       const quantityG = quantitiesG[mealSlot];
       const factor = quantityG / 100;
-      await tx.mealLogItem.create({
-        data: {
-          mealLogId: mealLog.id,
-          foodId: food.id,
-          foodNameSnapshot: food.name,
-          quantityG,
-          caloriesSnapshot: food.caloriesPer100g * factor,
-          proteinSnapshot: food.proteinPer100g * factor,
-          carbsSnapshot: food.carbsPer100g * factor,
-          fatSnapshot: food.fatPer100g * factor,
-        },
+      mealLogItems.push({
+        mealLogId,
+        foodId: food.id,
+        foodNameSnapshot: food.name,
+        quantityG,
+        caloriesSnapshot: food.caloriesPer100g * factor,
+        proteinSnapshot: food.proteinPer100g * factor,
+        carbsSnapshot: food.carbsPer100g * factor,
+        fatSnapshot: food.fatPer100g * factor,
       });
     }
   }
+
+  return { plan, sessions, sets, bodyMetrics, mealLogs, mealLogItems };
 }
 
 async function guestLogin() {
@@ -392,24 +360,54 @@ async function guestLogin() {
   }
 
   await cleanupExpiredGuests();
-  const suffix = crypto.randomBytes(24).toString("hex");
-  const email = `guest-${suffix}@guest.spartan.local`;
+  const userId = crypto.randomUUID();
+  const email = `guest-${crypto.randomBytes(24).toString("hex")}@guest.spartan.local`;
   const passwordHash = await bcrypt.hash(
     crypto.randomBytes(32).toString("hex"),
     SALT_ROUNDS,
   );
-  const user = await prisma.$transaction(async (tx) => {
-    const createdUser = await tx.user.create({
-      data: { email, passwordHash, isGuest: true },
-    });
-    await seedGuestData(tx, createdUser.id, exercises, foods);
-    return createdUser;
-  });
+  const data = buildGuestData(userId, exercises, foods);
+
+  const user = await prisma.$transaction(
+    async (tx) => {
+      const createdUser = await tx.user.create({
+        data: {
+          id: userId,
+          email,
+          passwordHash,
+          isGuest: true,
+          profile: {
+            create: {
+              displayName: "Demo",
+              age: 29,
+              gender: "male",
+              heightCm: 175,
+              weightKg: 77.6,
+              goal: "general_fitness",
+              gymExperience: "intermediate",
+              activityLevel: "moderate",
+              foodPreference: "non_vegetarian",
+            },
+          },
+          equipment: {
+            create: GUEST_EQUIPMENT.map((equipmentTag) => ({ equipmentTag })),
+          },
+        },
+      });
+      await tx.workoutPlan.create({ data: data.plan });
+      await tx.workoutSession.createMany({ data: data.sessions });
+      await tx.workoutSessionSet.createMany({ data: data.sets });
+      await tx.bodyMetric.createMany({ data: data.bodyMetrics });
+      await tx.mealLog.createMany({ data: data.mealLogs });
+      await tx.mealLogItem.createMany({ data: data.mealLogItems });
+      return createdUser;
+    },
+    { maxWait: 10_000, timeout: 30_000 },
+  );
 
   return {
     token: signToken(user),
     user: { id: user.id, email: user.email, isGuest: true },
   };
 }
-
 module.exports = { signup, login, guestLogin };
