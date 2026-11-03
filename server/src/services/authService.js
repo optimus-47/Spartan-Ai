@@ -65,6 +65,63 @@ const fallbackFoods = {
   snack: "Banana",
 };
 
+const mealSides = {
+  breakfast: [
+    ["Milk (whole)", 200],
+    ["Banana", 120],
+    ["Sambar", 150],
+    ["Curd/Yogurt (plain)", 150],
+  ],
+  lunch: [
+    ["Basmati Rice (cooked)", 180],
+    ["Roti (whole wheat)", 80],
+    ["Curd/Yogurt (plain)", 100],
+  ],
+  dinner: [
+    ["Dal Tadka", 150],
+    ["Sweet Potato (boiled)", 150],
+    ["Curd/Yogurt (plain)", 100],
+  ],
+  snack: [
+    ["Almonds", 25],
+    ["Peanut Butter", 20],
+  ],
+};
+
+// Pre-built sample so the demo meal planner has content without spending an AI call.
+const sampleMealPlanDays = [
+  [
+    ["breakfast", "Oats (dry)", 80],
+    ["breakfast", "Milk (whole)", 250],
+    ["lunch", "Chicken Breast (cooked)", 180],
+    ["lunch", "Basmati Rice (cooked)", 200],
+    ["snack", "Curd/Yogurt (plain)", 200],
+    ["snack", "Almonds", 25],
+    ["dinner", "Roti (whole wheat)", 120],
+    ["dinner", "Dal Tadka", 200],
+  ],
+  [
+    ["breakfast", "Idli", 200],
+    ["breakfast", "Sambar", 200],
+    ["lunch", "Rajma (kidney bean curry)", 220],
+    ["lunch", "Brown Rice (cooked)", 180],
+    ["snack", "Whey Protein (generic)", 30],
+    ["snack", "Banana", 120],
+    ["dinner", "Paneer (raw)", 120],
+    ["dinner", "Roti (whole wheat)", 120],
+  ],
+  [
+    ["breakfast", "Egg (whole, boiled)", 150],
+    ["breakfast", "Dosa (plain)", 150],
+    ["lunch", "Chole (chickpea curry)", 220],
+    ["lunch", "Roti (whole wheat)", 120],
+    ["snack", "Peanut Butter", 30],
+    ["snack", "Milk (whole)", 250],
+    ["dinner", "Chicken Breast (cooked)", 160],
+    ["dinner", "Sweet Potato (boiled)", 200],
+  ],
+];
+
 let lastGuestCleanupAt = 0;
 let guestCleanupPromise = null;
 
@@ -277,8 +334,8 @@ function buildGuestData(userId, exercises, foods) {
   const sessions = [];
   const sets = [];
   const bestEstimatedMax = new Map();
-  for (let sessionIndex = 0; sessionIndex < 6; sessionIndex += 1) {
-    const daysAgo = 18 - sessionIndex * 3;
+  for (let sessionIndex = 0; sessionIndex < 8; sessionIndex += 1) {
+    const daysAgo = 15 - sessionIndex * 2;
     const completedAt = new Date(Date.now() - daysAgo * DAY_MS);
     const startedAt = new Date(completedAt.getTime() - 60 * 60 * 1000);
     const sessionId = crypto.randomUUID();
@@ -328,21 +385,62 @@ function buildGuestData(userId, exercises, foods) {
       mealLogs.push({ id: mealLogId, userId, logDate: utcDateDaysAgo(daysAgo), mealSlot });
 
       const quantityG = quantitiesG[mealSlot];
-      const factor = quantityG / 100;
-      mealLogItems.push({
-        mealLogId,
-        foodId: food.id,
-        foodNameSnapshot: food.name,
-        quantityG,
-        caloriesSnapshot: food.caloriesPer100g * factor,
-        proteinSnapshot: food.proteinPer100g * factor,
-        carbsSnapshot: food.carbsPer100g * factor,
-        fatSnapshot: food.fatPer100g * factor,
-      });
+      mealLogItems.push(buildMealItem(mealLogId, food, quantityG));
+
+      const sides = mealSides[mealSlot];
+      const [sideName, sideQuantityG] = sides[(6 - daysAgo) % sides.length];
+      const side = foodsByName.get(sideName);
+      if (side && side.id !== food.id) {
+        mealLogItems.push(buildMealItem(mealLogId, side, sideQuantityG));
+      }
     }
   }
 
-  return { plan, sessions, sets, bodyMetrics, mealLogs, mealLogItems };
+  const mealPlan = buildSampleMealPlan(userId, foodsByName);
+
+  return { plan, sessions, sets, bodyMetrics, mealLogs, mealLogItems, mealPlan };
+}
+
+function buildMealItem(mealLogId, food, quantityG) {
+  const factor = quantityG / 100;
+  return {
+    mealLogId,
+    foodId: food.id,
+    foodNameSnapshot: food.name,
+    quantityG,
+    caloriesSnapshot: food.caloriesPer100g * factor,
+    proteinSnapshot: food.proteinPer100g * factor,
+    carbsSnapshot: food.carbsPer100g * factor,
+    fatSnapshot: food.fatPer100g * factor,
+  };
+}
+
+function buildSampleMealPlan(userId, foodsByName) {
+  const days = sampleMealPlanDays.map((meals, dayIndex) => ({
+    dayIndex,
+    meals: meals
+      .map(([mealSlot, foodName, quantityG]) => {
+        const food = foodsByName.get(foodName);
+        if (!food) return null;
+        const factor = quantityG / 100;
+        return {
+          mealSlot,
+          foodId: food.id,
+          quantityG,
+          foodName: food.name,
+          calories: food.caloriesPer100g * factor,
+          protein: food.proteinPer100g * factor,
+        };
+      })
+      .filter(Boolean),
+  }));
+  if (days.some((day) => day.meals.length === 0)) return null;
+  return {
+    userId,
+    dietType: "non_vegetarian",
+    goal: "general_fitness",
+    generatedPlan: { dietType: "non_vegetarian", days },
+  };
 }
 
 async function guestLogin() {
@@ -387,6 +485,8 @@ async function guestLogin() {
               gymExperience: "intermediate",
               activityLevel: "moderate",
               foodPreference: "non_vegetarian",
+              sleepHoursTarget: 8,
+              waterIntakeTargetMl: 3000,
             },
           },
           equipment: {
@@ -400,6 +500,7 @@ async function guestLogin() {
       await tx.bodyMetric.createMany({ data: data.bodyMetrics });
       await tx.mealLog.createMany({ data: data.mealLogs });
       await tx.mealLogItem.createMany({ data: data.mealLogItems });
+      if (data.mealPlan) await tx.aiMealPlan.create({ data: data.mealPlan });
       return createdUser;
     },
     { maxWait: 10_000, timeout: 30_000 },

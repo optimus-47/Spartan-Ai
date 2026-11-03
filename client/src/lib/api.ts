@@ -134,15 +134,70 @@ export interface WorkoutSessionSummary {
   id: string;
   startedAt: string;
   completedAt: string | null;
-  sets: Array<{
-    id: string;
-    exerciseId: string;
-    setIndex: number;
-    weightKg: number;
-    reps: number;
-    isPr: boolean;
-    exercise: Pick<Exercise, "id" | "name" | "muscleGroup">;
-  }>;
+  planId?: string | null;
+  sets: WorkoutSet[];
+}
+
+export interface WorkoutSet {
+  id: string;
+  exerciseId: string;
+  setIndex: number;
+  weightKg: number;
+  reps: number;
+  isPr: boolean;
+  exercise: Pick<Exercise, "id" | "name" | "muscleGroup">;
+}
+
+export interface Food {
+  id: string;
+  name: string;
+  cuisineTag: string | null;
+  caloriesPer100g: number;
+  proteinPer100g: number;
+  carbsPer100g: number;
+  fatPer100g: number;
+}
+
+export type MealSlot = "breakfast" | "lunch" | "dinner" | "snack";
+export type DietType = "vegetarian" | "vegan" | "non_vegetarian" | "eggetarian";
+
+export interface DetectedFoodItem {
+  detectedName: string;
+  estimatedGrams: number;
+  confidence: number;
+  matchedFoodId: string | null;
+  matchedFoodName: string | null;
+}
+
+export interface MealPlanMeal {
+  mealSlot: MealSlot;
+  foodId: string;
+  quantityG: number;
+  foodName: string;
+  calories: number;
+  protein: number;
+}
+
+export interface AiMealPlan {
+  id: string;
+  dietType: string | null;
+  goal: string | null;
+  generatedAt: string;
+  generatedPlan: {
+    dietType: string;
+    days: Array<{ dayIndex: number; meals: MealPlanMeal[] }>;
+  };
+}
+
+export interface FinishedSession {
+  totalVolumeKg: number;
+  prCount: number;
+  setCount: number;
+}
+
+export interface UserDetails {
+  equipment: Array<{ id: string; equipmentTag: string }>;
+  injuries: Array<{ id: string; injuryTag: string; active: boolean }>;
 }
 
 interface RawCurrentUser {
@@ -454,6 +509,100 @@ export const api = {
 
   async getWorkoutSessions(): Promise<WorkoutSessionSummary[]> {
     return request<WorkoutSessionSummary[]>("/workouts/sessions");
+  },
+
+  async getWorkoutSession(sessionId: string): Promise<WorkoutSessionSummary> {
+    return request<WorkoutSessionSummary>(
+      `/workouts/sessions/${encodeURIComponent(sessionId)}`,
+    );
+  },
+
+  async startWorkoutSession(planId?: string): Promise<WorkoutSessionSummary> {
+    return request<WorkoutSessionSummary>("/workouts/sessions", {
+      method: "POST",
+      body: planId ? { planId } : {},
+    });
+  },
+
+  async logWorkoutSet(
+    sessionId: string,
+    set: { exerciseId: string; weightKg: number; reps: number },
+  ): Promise<Omit<WorkoutSet, "exercise">> {
+    return request<Omit<WorkoutSet, "exercise">>(
+      `/workouts/sessions/${encodeURIComponent(sessionId)}/sets`,
+      { method: "POST", body: set },
+    );
+  },
+
+  async finishWorkoutSession(sessionId: string): Promise<FinishedSession> {
+    return request<FinishedSession>(
+      `/workouts/sessions/${encodeURIComponent(sessionId)}/finish`,
+      { method: "POST" },
+    );
+  },
+
+  async searchFoods(search: string): Promise<Food[]> {
+    const query = search.trim() ? `?search=${encodeURIComponent(search.trim())}` : "";
+    return request<Food[]>(`/nutrition/foods${query}`);
+  },
+
+  async logMeal(entry: {
+    logDate: string;
+    mealSlot: MealSlot;
+    foodId: string;
+    quantityG: number;
+  }): Promise<void> {
+    await request("/nutrition/meals", { method: "POST", body: entry });
+  },
+
+  async scanMeal(image: File): Promise<DetectedFoodItem[]> {
+    const form = new FormData();
+    form.append("image", image);
+    const response = await request<{ detectedItems: DetectedFoodItem[] }>(
+      "/nutrition/meals/scan",
+      { method: "POST", body: form },
+    );
+    return response.detectedItems;
+  },
+
+  async confirmMealScan(entry: {
+    logDate: string;
+    mealSlot: MealSlot;
+    items: Array<{
+      foodId?: string;
+      foodName?: string;
+      quantityG: number;
+      isAiDetected: boolean;
+      confidence?: number;
+    }>;
+  }): Promise<void> {
+    await request("/nutrition/meals/confirm", { method: "POST", body: entry });
+  },
+
+  async getLatestMealPlan(): Promise<AiMealPlan | null> {
+    const response = await request<{ plan: AiMealPlan | null }>(
+      "/nutrition/meal-plans/latest",
+    );
+    return response.plan;
+  },
+
+  async generateMealPlan(dietType: DietType, days: number): Promise<AiMealPlan> {
+    return request<AiMealPlan>("/nutrition/meal-plans/generate", {
+      method: "POST",
+      body: { dietType, days },
+    });
+  },
+
+  async addBodyMetric(weightKg: number): Promise<void> {
+    await request("/users/me/body-metrics", {
+      method: "POST",
+      body: { weightKg },
+    });
+  },
+
+  async getUserDetails(): Promise<UserDetails> {
+    const raw = await request<Partial<UserDetails>>("/users/me");
+    return { equipment: raw.equipment ?? [], injuries: raw.injuries ?? [] };
   },
 
   async getActiveWorkoutPlan(): Promise<ActiveWorkoutPlan | null> {

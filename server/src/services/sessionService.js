@@ -79,4 +79,18 @@ async function getHistory(userId) {
   });
 }
 
-module.exports = { startSession, logSet, finishSession, getHistory };
+async function getSession(userId, sessionId) {
+  const session = await prisma.workoutSession.findUnique({
+    where: { id: sessionId },
+    include: { sets: { include: { exercise: true }, orderBy: { setIndex: "asc" } } },
+  });
+  if (!session || session.userId !== userId) {
+    const err = new Error("Session not found");
+    err.statusCode = 404;
+    err.code = "SESSION_NOT_FOUND";
+    throw err;
+  }
+  return session;
+}
+
+module.exports = { startSession, logSet, finishSession, getHistory, getSession };

@@ -7,9 +7,14 @@ import { DashboardPage } from "./pages/DashboardPage";
 import { HomePage } from "./pages/HomePage";
 import { LoginPage } from "./pages/LoginPage";
 import { OnboardingPage } from "./pages/OnboardingPage";
-import { ProtectedPlaceholderPage } from "./pages/ProtectedPlaceholderPage";
+import { ProfilePage } from "./pages/ProfilePage";
+import { ProgressPage } from "./pages/ProgressPage";
+import { MealPlannerPage } from "./pages/MealPlannerPage";
+import { NutritionPage } from "./pages/NutritionPage";
 import { SignupPage } from "./pages/SignupPage";
 import { VerifyEmailPage } from "./pages/VerifyEmailPage";
+import { WorkoutSessionPage } from "./pages/WorkoutSessionPage";
+import { WorkoutsPage } from "./pages/WorkoutsPage";
 
 function RootRoute() {
   const { user, profile, ready, status } = useAuth();
@@ -54,21 +59,15 @@ export default function App() {
         <Route element={<ProtectedRoute />}>
           <Route element={<OnboardingPage />} path="/onboarding" />
           <Route element={<DashboardPage />} path="/dashboard" />
-          <Route element={<ProtectedPlaceholderPage />} path="/workouts" />
-          <Route
-            element={<ProtectedPlaceholderPage />}
-            path="/workouts/session/:sessionId"
-          />
-          <Route element={<ProtectedPlaceholderPage />} path="/workouts/history" />
-          <Route element={<ProtectedPlaceholderPage />} path="/nutrition" />
-          <Route element={<ProtectedPlaceholderPage />} path="/nutrition/add" />
-          <Route element={<ProtectedPlaceholderPage />} path="/nutrition/scan" />
-          <Route
-            element={<ProtectedPlaceholderPage />}
-            path="/nutrition/meal-plan"
-          />
-          <Route element={<ProtectedPlaceholderPage />} path="/progress" />
-          <Route element={<ProtectedPlaceholderPage />} path="/profile" />
+          <Route element={<WorkoutsPage />} path="/workouts" />
+          <Route element={<WorkoutSessionPage />} path="/workouts/session/:sessionId" />
+          <Route element={<WorkoutsPage focusHistory />} path="/workouts/history" />
+          <Route element={<NutritionPage />} path="/nutrition" />
+          <Route element={<NutritionPage initialPanel="add" />} path="/nutrition/add" />
+          <Route element={<NutritionPage initialPanel="scan" />} path="/nutrition/scan" />
+          <Route element={<MealPlannerPage />} path="/nutrition/meal-plan" />
+          <Route element={<ProgressPage />} path="/progress" />
+          <Route element={<ProfilePage />} path="/profile" />
         </Route>
         <Route element={<HomePage />} path="*" />
       </Route>

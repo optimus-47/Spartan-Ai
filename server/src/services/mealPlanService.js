@@ -159,4 +159,11 @@ async function generateMealPlan(userId, dietType, days) {
   return saved;
 }
 
-module.exports = { generateMealPlan };
+async function getLatestMealPlan(userId) {
+  return prisma.aiMealPlan.findFirst({
+    where: { userId },
+    orderBy: { generatedAt: "desc" },
+  });
+}
+
+module.exports = { generateMealPlan, getLatestMealPlan };

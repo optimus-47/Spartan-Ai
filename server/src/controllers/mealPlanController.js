@@ -20,4 +20,13 @@ async function generate(req, res, next) {
   }
 }
 
-module.exports = { generate };
+async function latest(req, res, next) {
+  try {
+    const plan = await mealPlanService.getLatestMealPlan(req.userId);
+    res.json({ plan });
+  } catch (err) {
+    next(err);
+  }
+}
+
+module.exports = { generate, latest };

@@ -1,14 +1,17 @@
 import { useEffect, useState } from "react";
-import { Link, Outlet, useNavigate } from "react-router-dom";
+import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { guestLimitEventName } from "../lib/api";
+import { AppNav } from "./AppNav";
 import { ThemeToggle } from "./ThemeToggle";
 import { SlowRequestNotice } from "./SlowRequestNotice";
 
 export function AppShell() {
-  const { user, logout, error } = useAuth();
+  const { user, profile, logout, error } = useAuth();
   const navigate = useNavigate();
+  const { pathname } = useLocation();
   const [guestLimitMessage, setGuestLimitMessage] = useState("");
+  const showNav = Boolean(user && profile) && pathname !== "/onboarding";
 
   useEffect(() => {
     const handleGuestLimit = (event: Event) => {
@@ -28,13 +31,24 @@ export function AppShell() {
   };
 
   return (
-    <div className="app-shell">
+    <div className={`app-shell${showNav ? " has-nav" : ""}`}>
       <header className="topbar">
         <Link aria-label="Spartan AI home" className="brand" to="/">
           <span aria-hidden="true" className="brand-mark">S</span>
           <span>SPARTAN <span className="brand-light">AI</span></span>
         </Link>
         <div className="topbar-actions">
+          {user && profile && (
+            <Link className="topbar-user" to="/profile">
+              <span aria-hidden="true" className="topbar-avatar">
+                {(profile.displayName || "A").slice(0, 1).toUpperCase()}
+              </span>
+              <span className="topbar-user-name">
+                {profile.displayName || "Athlete"}
+                {user.isGuest && <span className="topbar-badge">DEMO</span>}
+              </span>
+            </Link>
+          )}
           {user ? (
             <button className="text-button" onClick={handleLogout} type="button">
               Sign out
@@ -45,6 +59,7 @@ export function AppShell() {
           <ThemeToggle />
         </div>
       </header>
+      {showNav && <AppNav />}
       {user?.isGuest && (
         <aside className="demo-banner" role="status">
           <span>

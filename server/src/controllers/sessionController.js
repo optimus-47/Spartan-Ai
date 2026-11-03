@@ -51,4 +51,13 @@ async function history(req, res, next) {
   }
 }
 
-module.exports = { start, addSet, finish, history };
+async function getOne(req, res, next) {
+  try {
+    const session = await sessionService.getSession(req.userId, req.params.id);
+    res.json(session);
+  } catch (err) {
+    next(err);
+  }
+}
+
+module.exports = { start, addSet, finish, history, getOne };
